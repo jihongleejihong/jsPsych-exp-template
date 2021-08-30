@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <!-- Load basic libraries from web  -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/jspsych.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/2.6.3/svg.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/css/jspsych.css">
+    </link>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-html-keyboard-response.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-fullscreen.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-external-html.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-call-function.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-preload.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-survey-text.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-html-button-response.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-image-button-response.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/gh/jspsych/jsPsych/plugins/jspsych-virtual-chinrest.js"></script>
+    <script type="text/javascript" src="https://lib.pavlovia.org/jspsych-pavlovia-3.2.5.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/spectra@0.2.3/spectra.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/kurokida/jspsych-psychophysics/jspsych-psychophysics.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/nicolaspanel/numjs@0.15.1/dist/numjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/numeric@1.2.6/numeric-1.2.6.min.js"></script>
+    <!-- Load basic libraries from local path -->
+    <script src="./library/common_library.js"></script>
+    <script src="./library/basic_exp_objects.js"></script>
+    <script src="./local/EXP_workspace.js"></script>
+    <script src="./local/EXP_trial.js"></script>
+
+</head>
+
+<body></body>
+<script>
+
+    /// experiment codes///
+    timeline = [];
+    pre_timeline = [];
+    practice_timeline = [];
+    main_timeline = [];
+    post_timeline = [];
+    var p_done = 0; // flag for practice done
+    var p_trials = []
+    var main_trials = []
+    var current_X;
+    var current_Y;
+    var preload_list = ['src/tutorial-1.png', 'src/tutorial-2.png', 'src/tutorial-3.png'];
+    var tutorial_images = preload_list;
+
+    // obtaining screen information 
+    let deg_resize = {
+        type: "virtual-chinrest",
+        blindspot_reps: 0,
+        resize_units: "none",
+        viewing_distance_report: "none",
+        item_path: "https://cdn.jsdelivr.net/gh/jspsych/jsPsych/examples/img/card.png",
+        on_finish: after_resize // from EXP_workspace
+    }
+
+    // making design matrix
+    const exp_factors = {
+        stdev: [4, 8],
+        test_level: range(7, -9, 3),
+    };
+
+    // experiment matrix for practice session
+    var pmat = jsPsych.randomization.factorial(exp_factors, ws.p_rep, 0);
+    for (i = 0; i < pmat.length; i++) {
+        pmat[i].trial_num = i + 1;
+        pmat[i].b_type = 'practice';
+        pmat[i].corr_direction = jsPsych.randomization.sampleWithReplacement([-1, 1], 1)[0];
+    }
+
+
+    var expmat = jsPsych.randomization.factorial(exp_factors, ws.n_rep, 0);
+    for (i = 0; i < expmat.length; i++) {
+        expmat[i].trial_num = i + 1;
+        expmat[i].b_type = 'main';
+    }
+
+    // timeline for a trial
+    var exp_timeline = [preparation, set_display, response]; // from EXP_trial
+
+
+    // practice trials
+    p_trials = {
+        timeline_variables: pmat,
+        timeline: exp_timeline,
+        repetitions: 1,
+        on_finish: function () { p_done = 1; } // when practice is done
+    }
+
+
+    // main trials
+    main_trials = [];
+    block_n = range(ws.n_block, 1);
+    var n_trialperblock = (expmat.length / ws.n_block);
+
+    for (i = 0; i < ws.n_block; i++) {
+        main_trials.push(break_screen, viewing_distance, {
+            timeline_variables: expmat.filter(function (x) { return (x.trial_num <= n_trialperblock * (i + 1) & x.trial_num > n_trialperblock * (i)) }),
+            timeline: exp_timeline,
+            repetitions: 1
+        });
+    };
+
+    main_trials.splice(0, 1); // delete break screen before the first block
+
+
+    // auto-selection of exp-running host (pavlovia / local)
+    if (document.location.hostname == "run.pavlovia.org") {
+        // for pavlovia running
+        pre_timeline = {
+            type: 'pre-experiement', timeline: [pavlovia_init, preload_trial, fullscreen_on, deg_resize, viewing_distance],
+        };
+
+        post_timeline = {
+            type: 'post-experiement', timeline: [experiment_time, gen_confirm_code, pavlovia_finish, closing, fullscreen_off],
+        };
+    } else {
+        // for local running
+        pre_timeline = {
+            type: 'pre-experiement', timeline: [preload_trial, fullscreen_on, deg_resize, viewing_distance],
+        };
+
+        post_timeline = {
+            type: 'post-experiement', timeline: [experiment_time, gen_confirm_code, closing, fullscreen_off],
+        };
+    }
+    practice_timeline = { type: 'practice', timeline: [instruction, p_trials] };
+    main_timeline = { type: 'main-experiment', timeline: [instruction].concat(main_trials) };
+
+
+
+
+    // timeline for whole experiment
+    timeline.push(pre_timeline, practice_timeline, main_timeline, post_timeline);
+    // timeline.push(pre_timeline,  main_timeline, post_timeline); //for test
+
+
+
+    //initializing EXP
+
+    jsPsych.init({
+        timeline: timeline,
+
+        on_finish: function () {
+            jsPsych.getDisplayContainerElement().style.overflow = ''; // unlock scroll
+
+            // jsPsych.data.displayData('csv');
+        },
+        // exclusions: {
+        //     min_width: 800,
+        //     min_height: 600
+        // }
+    });
+// jsPsych.data.get().filter({ content: 'data' }).localSave('csv', 'data.csv')
+
+
+</script>
+
+</html>
